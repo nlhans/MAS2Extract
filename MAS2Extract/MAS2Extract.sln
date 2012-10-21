@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MAS2Extract", "MAS2Extract.csproj", "{252A8D7E-1AD4-446E-8CCC-49B72A881660}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{252A8D7E-1AD4-446E-8CCC-49B72A881660}.Debug|x86.ActiveCfg = Debug|x86
+		{252A8D7E-1AD4-446E-8CCC-49B72A881660}.Debug|x86.Build.0 = Debug|x86
+		{252A8D7E-1AD4-446E-8CCC-49B72A881660}.Release|x86.ActiveCfg = Release|x86
+		{252A8D7E-1AD4-446E-8CCC-49B72A881660}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
