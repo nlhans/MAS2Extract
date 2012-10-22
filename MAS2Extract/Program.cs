@@ -11,7 +11,7 @@ namespace MAS2Extract
     {
         static void Main(string[] args)
         {
-
+            args = new string[2] { @"C:\Users\Hans\Documents\CoreShaders.mas", @"C:\Users\Hans\Documents\haha\" };
             if (args.Length == 0)
             {
                 Console.WriteLine("mas2extract.exe filename.MAS [-s] [target_directory]");
