@@ -5,7 +5,9 @@ This utility allows reading the data of rFactor 2 (beta) MAS2 files. rFactor 2 M
 - Extract in memory: output as string or output as byte array
 - Extract as a new file with a given target path
 
-This code has been tested with the latest released mods as of end October 2012 (the MAS 2.90 format). It is known that 'encrypted' files like shaders.mas cannot be encrypted. As of now I have no interest to research this, as this utility allows automatic reading of game data files such as track AIW paths, car data (engine, tyre data) without manual user interference.
+The console application can show the contents of a MAS file and with a given target path, extract all files.
+
+This code has been tested with the latest released mods as of end October 2012 (the MAS 2.90 format). It is known that 'encrypted' files like shaders.mas cannot be read. As of now I have no interest to research this, as this utility aims to allow automatic reading of game data files such as track AIW paths, car data (engine, tyre data) without manual user interference.
   
 Please feel free to contribute, fork, give feedback, etc. Please see the 'issues' section.
 
