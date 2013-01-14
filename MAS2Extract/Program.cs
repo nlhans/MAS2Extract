@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
-using SimTelemetry.Game.rFactor2;
 
 namespace MAS2Extract
 {
@@ -11,7 +7,7 @@ namespace MAS2Extract
     {
         static void Main(string[] args)
         {
-            args = new string[2] { @"C:\Users\Hans\Documents\CoreShaders.mas", @"C:\Users\Hans\Documents\haha\" };
+
             if (args.Length == 0)
             {
                 Console.WriteLine("mas2extract.exe filename.MAS [-s] [target_directory]");
@@ -21,7 +17,7 @@ namespace MAS2Extract
                 Console.WriteLine("If no extract directory is entered, the location of mas2extract.exe will be used.");
                 return;
             }
-            string f= args[0];
+            var f= args[0];
             if(File.Exists(f) == false)
             {
                 Console.WriteLine("Cannot find target MAS file!");
@@ -69,9 +65,15 @@ namespace MAS2Extract
                     Console.Write(PatchString(file.CompressedSize.ToString(), 10) + " | ");
                     Console.Write(PatchString(file.UncompressedSize.ToString(), 10) + " | ");
                     Console.Write(PatchString(Math.Round(100*ratio,1).ToString(), 10) + " |");
+                    try
+                    {
+                        if (unpack)
+                            reader.ExtractFile(file, Path.Combine(target + "\\", file.Filename));
+                    }catch(Exception ex)
+                    {
+                        Console.Write("FAIL");
+                    }
                     Console.WriteLine();
-                    if(unpack)
-                        reader.ExtractFile(file, Path.Combine(target + "\\", file.Filename));
                 }
                 
                 Console.WriteLine(

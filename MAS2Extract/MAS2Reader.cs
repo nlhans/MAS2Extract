@@ -1,47 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Ionic.Zlib;
 
-namespace SimTelemetry.Game.rFactor2
+namespace MAS2Extract
 {
-    public struct MAS2File
-    {
-        public string Filename;
-        public string Filename_Path;
-
-        public bool IsCompressed { get { return (CompressedSize != UncompressedSize); } }
-
-        public uint Index;
-        public uint CompressedSize;
-        public uint UncompressedSize;
-
-        public uint FileOffset;
-    }
-
     /// <summary>
     /// This class reads .MAS files for rFactor 2.
     /// Made in-house of course :-)
     /// </summary>
     public class MAS2Reader
     {
-        private string mas2_file;
-        private BinaryReader reader;
-        private byte[] salt;
-        private uint saltkey;
-        private uint saltkey2;
+        #region Deciphering information
+        protected byte[] Salt;
+        protected uint Saltkey;
+        protected uint Saltkey2;
 
-        private byte[] file_header;
-
-        public List<MAS2File> Files;
-
-        private byte[] FileTypeKeys = new byte[16]
+        protected readonly byte[] FileTypeKeys = new byte[]
                              {
                                  0x42, 0xF8, 0x95, 0x20, 0xDE, 0x5F, 0xC1, 0x10, 0xD9, 0xC8, 0xAE, 0xD0, 0x0F, 0x0D,
                                  0x70, 0xAB
                              };
-        private byte[] FileHeaderKeys = new byte[256]
+        protected readonly byte[] FileHeaderKeys = new byte[]
                                       {
                                           0xB8, 0xA8, 0x8B, 0x07, 0x8A, 0x0E, 0xF2, 0x11, 0x68, 0xFB, 0xBC, 0xDB, 0x12,
                                           0xD0, 0xB6, 0xB3, 0x9F, 0x69, 0x55, 0x5F, 0xC7, 0xCA, 0x61, 0xAD, 0x3C, 0x56,
@@ -63,72 +45,100 @@ namespace SimTelemetry.Game.rFactor2
                                           0x7C, 0xF0, 0xF1, 0x37, 0xA7, 0xED, 0x86, 0xDD, 0x98, 0xC4, 0x82, 0x89, 0x31,
                                           0x5B, 0x74, 0x0C, 0x92, 0x0D, 0x6C, 0x38, 0xCF, 0x51, 0x2C, 0x7B, 0x44, 0x50,
                                           0x0A, 0x9B, 0x5E, 0, 0x73, 0x29, 0x85, 0xC8, 0xE2  };
+        #endregion
 
+        #region Binary readers/helpers
+        protected readonly BinaryReader Reader;
+        protected byte[] FileHeader;
+        #endregion
 
-        public string File { get { return mas2_file; } }
-        public int Count { get { return Files.Count; } }
+        #region MAS2 file info
+        protected readonly List<MAS2File> _files = new List<MAS2File>();
+        public List<MAS2File> Files { get { return _files; } }
+        public int Count { get { return _files.Count; } }
 
-        private string DecodeHeaderString(byte[] mas_header)
+        protected string _File;
+        public string File { get { return _File; } }
+        #endregion
+
+        /// <summary>
+        /// Read the file header containing the file format + 
+        /// all internal files
+        /// </summary>
+        protected void ReadHeader()
         {
-            // The header is encoded with a XOR-like compression with 16-byte key.
-            byte[] pkg_type = mas_header;
-
-            for (int i = 0; i < 16; i++)
-                pkg_type[i] = (byte)(pkg_type[i] ^ (FileTypeKeys[i] >> 1));
-
-            string type = ASCIIEncoding.ASCII.GetString(pkg_type);
-            return type;
-        }
-
-        private void ReadHeader()
-        {
-            byte[] file_type = reader.ReadBytes(16);
-            string file_type_s = DecodeHeaderString(file_type).Replace('\0',' ').Trim();
-            if (file_type_s == "GMOTOR_MAS_2.90")
+            var fileTypeBytes = Reader.ReadBytes(16);
+            var fileTypeString = DecodeFileFormatHeader(fileTypeBytes).Replace('\0',' ').Trim();
+            if (fileTypeString == "GMOTOR_MAS_2.90")
             {
-                salt = reader.ReadBytes(8);
-                saltkey = BitConverter.ToUInt32(salt, 0);
-                saltkey2 = BitConverter.ToUInt32(salt, 4);
-                if (saltkey < 64) saltkey += 64;
-                if (saltkey2 < 64) saltkey2 += 64;
+                Salt = Reader.ReadBytes(8);
+                Saltkey = BitConverter.ToUInt32(Salt, 0);
+                Saltkey2 = BitConverter.ToUInt32(Salt, 4);
+                if (Saltkey < 64) Saltkey += 64;
+                if (Saltkey2 < 64) Saltkey2 += 64;
 
-                byte[] garbage = reader.ReadBytes(120 - 16 - 8);
-                int bf_size = reader.ReadInt32();
-                byte[] bf = reader.ReadBytes(bf_size);
+                var garbage = Reader.ReadBytes(120 - 16 - 8);
 
-                file_header = DecodeFileHeader(bf);
+                // Reader size of file header:
+                var bfSize = Reader.ReadInt32();
+                var bf = Reader.ReadBytes(bfSize);
+
+                FileHeader = DecodeFilesHeader(bf);
             }
         }
 
-        private byte[] DecodeFileHeader(byte[] bf)
+        /// <summary>
+        /// Decode the file header data
+        /// </summary>
+        /// <param name="masHeader"></param>
+        /// <returns></returns>
+        private string DecodeFileFormatHeader(byte[] masHeader)
+        {
+            // The header is encoded with a XOR-like compression with 16-byte key.
+            var pkgType = masHeader;
+            if (pkgType == null || pkgType.Length != 16)
+                throw new Exception("Invalid file header");
+
+            for (var i = 0; i < 16; i++)
+                pkgType[i] = (byte)(pkgType[i] ^ (FileTypeKeys[i] >> 1));
+
+            return Encoding.ASCII.GetString(pkgType);
+        }
+
+        /// <summary>
+        /// Decode the header containing all the files of the MAS2 file.
+        /// </summary>
+        /// <param name="bf"></param>
+        /// <returns></returns>
+        private byte[] DecodeFilesHeader(byte[] bf)
         {
             // The files header is encoded with a XOR-like compression with 256-byte key.
             // The specific decoding algorithm is in here.
             // The MAS header itself is not parsed
 
-            byte[] output = new byte[bf.Length];
+            var output = new byte[bf.Length];
 
             if (bf.Length > 0)
             {
-                uint gigabyte_index = 0;
-                for (int byte_index = 0; byte_index < bf.Length; byte_index++)
+                uint gigabyteIndex = 0;
+                for (var byteIndex = 0; byteIndex < bf.Length; byteIndex++)
                 {
-                    byte ind = (byte)((byte_index + byte_index / 256) % 256);
-                    byte c = (byte)(byte_index & 0x3F);
+                    var ind = (byte)((byteIndex + byteIndex / 256) % 256);
+                    var c = (byte)(byteIndex & 0x3F);
 
-                    ulong value = ((ulong)FileHeaderKeys[ind]) << c;
+                    var value = ((ulong)FileHeaderKeys[ind]) << c;
 
-                    ulong value_h = value & 0xFFFFFFFF00000000;
-                    value_h = value_h >> 32;
-                    ulong value_l = value & 0x00000000FFFFFFFF;
-                    value_l = ((ulong)byte_index) | saltkey & value;
-                    value_h = ((ulong)gigabyte_index) | saltkey2 & value_h;
+                    var valueH = value & 0xFFFFFFFF00000000;
+                    valueH = valueH >> 32;
+                    ulong value_l;
+                    value_l = ((ulong)byteIndex) | Saltkey & value;
+                    valueH = gigabyteIndex | Saltkey2 & valueH;
 
-                    value = value_l | value_h << 32;
+                    value = value_l | valueH << 32;
 
-                    output[byte_index] = (byte)(bf[byte_index] ^ DecodeFileHeader_ShiftBytesRight(value, c));
+                    output[byteIndex] = (byte)(bf[byteIndex] ^ DecodeFilesHeaderShiftBytes(value, c));
 
-                    gigabyte_index = (uint)DecodeFileHeader_ShiftBytesRight((ulong)byte_index, 32);
+                    gigabyteIndex = (uint)DecodeFilesHeaderShiftBytes((ulong)byteIndex, 32);
                 }
             }
 
@@ -136,145 +146,155 @@ namespace SimTelemetry.Game.rFactor2
 
         }
 
-        private ulong DecodeFileHeader_ShiftBytesRight(ulong d, byte s)
+        /// <summary>
+        /// Helper function for decoding file header.
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="s"></param>
+        /// <returns></returns>
+        private static ulong DecodeFilesHeaderShiftBytes(ulong d, byte s)
         {
             if (s > 0x40)
                 return 64;
             return d >> s;
         }
 
+        /// <summary>
+        /// Constructor; parses MAS2 file for its contents.
+        /// Use the ContainsFile & GetFile methods to search for files.
+        /// Use the ExctractFile, ExctractString and ExtractBytes methods
+        /// for extracting a file.
+        /// </summary>
+        /// <param name="file"></param>
         public MAS2Reader(string file)
         {
-            this.mas2_file = file;
-            Files = new List<MAS2File>();
-            reader = new BinaryReader(System.IO.File.OpenRead(file));
+            _File = file;
+
+            Reader = new BinaryReader(System.IO.File.OpenRead(file));
             ReadHeader();
 
-            int files = file_header.Length / 256;
-            uint FilePosition = (uint)reader.BaseStream.Position;
-            reader.Close();
+            var files = FileHeader.Length / 256;
+            var filePosition = (uint)Reader.BaseStream.Position;
 
-            for (int f = 0; f < files; f++)
+            Reader.Close();
+
+            for (var i = 0; i < files; i++)
             {
-                string filename = ASCIIEncoding.ASCII.GetString(file_header, f * 256 + 16, 128);
+                var filename = Encoding.ASCII.GetString(FileHeader, i * 256 + 16, 128);
                 filename = filename.Substring(0, filename.IndexOf('\0'));
-                string filename_path = ASCIIEncoding.ASCII.GetString(file_header, f * 256 + 16 + filename.Length + 1, 128);
-                filename_path = filename_path.Substring(0, filename_path.IndexOf('\0'));
 
-                uint file_index = BitConverter.ToUInt32(file_header, f * 256);
-                uint size_compressed = BitConverter.ToUInt32(file_header, 4 + f * 256);
-                uint size_uncompressed = BitConverter.ToUInt32(file_header, 63 * 4 + f * 256);
+                var path = Encoding.ASCII.GetString(FileHeader, i * 256 + 16 + filename.Length + 1, 128);
+                path = path.Substring(0, path.IndexOf('\0'));
 
-                MAS2File masfile = new MAS2File();
-                masfile.CompressedSize = size_compressed;
-                masfile.UncompressedSize = size_uncompressed;
-                masfile.Index = file_index;
-                masfile.FileOffset = FilePosition;
-                masfile.Filename = filename;
-                masfile.Filename_Path = filename_path;
+                var fileIndex = BitConverter.ToUInt32(FileHeader, i * 256);
+                var sizeCompressed = BitConverter.ToUInt32(FileHeader, 65*4 + i * 256);
+                var sizeUncompressed = BitConverter.ToUInt32(FileHeader, 63 * 4 + i * 256);
 
-                FilePosition += masfile.CompressedSize;
-                this.Files.Add(masfile);
+                var masfile = new MAS2File(fileIndex, filename, path, sizeCompressed, sizeUncompressed,
+                                           filePosition);
+                _files.Add(masfile);
+
+                filePosition += sizeCompressed;
             }
         }
 
         #region Simple search methods.
         public bool ContainsFile(string file)
         {
-            return (Files.FindAll(delegate(MAS2File f) { return f.Filename.Contains(file); }).Count >= 1);
+            return _files.Any(x => x.Filename == file);
         }
 
-        public List<MAS2File> GetFile(string file)
+        public IEnumerable<MAS2File> GetFile(string file)
         {
-            return Files.FindAll(delegate(MAS2File f) { return f.Filename.Contains(file); });
+            return _files.Where(x => x.Filename == file);
         }
         #endregion
         #region Extract files in MAS2File
         public void ExtractFile(MAS2File f, string target)
-        {
-            BinaryReader reader = new BinaryReader(System.IO.File.OpenRead(this.mas2_file));
+            {
+            var reader = new BinaryReader(System.IO.File.OpenRead(_File));
             reader.BaseStream.Seek(f.FileOffset, SeekOrigin.Begin);
-            byte[] RawData = reader.ReadBytes((int)f.CompressedSize);
+            
+            var rawData = reader.ReadBytes((int)f.CompressedSize);
 
             if (f.IsCompressed)
             {
-                byte[] OutputData = new byte[f.UncompressedSize];
+                var outputData = new byte[f.UncompressedSize];
 
-                // MAS2 compression consists of a simple inflate/deflate process.
-                ZlibCodec codec = new ZlibCodec(CompressionMode.Decompress);
+                // MAS2 compression consists of a simple inflate/deflate action.
+                var codec = new ZlibCodec(CompressionMode.Decompress);
                 codec.InitializeInflate();
-                codec.InputBuffer = RawData;
+                codec.InputBuffer = rawData;
                 codec.NextIn = 0;
-                codec.AvailableBytesIn = RawData.Length;
+                codec.AvailableBytesIn = rawData.Length;
 
-                codec.OutputBuffer = OutputData;
+                codec.OutputBuffer = outputData;
                 codec.NextOut = 0;
-                codec.AvailableBytesOut = OutputData.Length;
+                codec.AvailableBytesOut = outputData.Length;
 
                 codec.Inflate(FlushType.None);
                 codec.EndInflate();
 
-                System.IO.File.WriteAllBytes(target, OutputData);
+                System.IO.File.WriteAllBytes(target, outputData);
             }
             else
             {
-                System.IO.File.WriteAllBytes(target, RawData);
+                System.IO.File.WriteAllBytes(target, rawData);
             }
 
         }
         public byte[] ExtractBytes(MAS2File f)
         {
-            BinaryReader reader = new BinaryReader(System.IO.File.OpenRead(this.mas2_file));
+            var reader = new BinaryReader(System.IO.File.OpenRead(this._File));
             reader.BaseStream.Seek(f.FileOffset, SeekOrigin.Begin);
-            byte[] RawData = reader.ReadBytes((int)f.CompressedSize);
+            var rawData = reader.ReadBytes((int)f.CompressedSize);
             reader.Close();
 
             if (f.IsCompressed)
             {
-                byte[] OutputData = new byte[f.UncompressedSize];
+                var outputData = new byte[f.UncompressedSize];
 
-                // MAS2 compression consists of a simple inflate/deflate process.
-                ZlibCodec codec = new ZlibCodec(CompressionMode.Decompress);
+                // MAS2 compression consists of a simple inflate/deflate action.
+                var codec = new ZlibCodec(CompressionMode.Decompress);
                 codec.InitializeInflate();
-                codec.InputBuffer = RawData;
+                codec.InputBuffer = rawData;
                 codec.NextIn = 0;
-                codec.AvailableBytesIn = RawData.Length;
+                codec.AvailableBytesIn = rawData.Length;
 
-                codec.OutputBuffer = OutputData;
+                codec.OutputBuffer = outputData;
                 codec.NextOut = 0;
-                codec.AvailableBytesOut = OutputData.Length;
+                codec.AvailableBytesOut = outputData.Length;
 
                 codec.Inflate(FlushType.None);
                 codec.EndInflate();
 
-                return OutputData;
+                return outputData;
             }
             else
             {
-                return RawData;
+                return rawData;
             }
-
         }
 
         public string ExtractString(MAS2File f)
         {
-            return ASCIIEncoding.ASCII.GetString(ExtractBytes(f));
+            return Encoding.ASCII.GetString(ExtractBytes(f));
         }
 #endregion
         #region Extract functions on index
         public void ExtractFile(int index, string target)
         {
-            ExtractFile(Files[index], target);
+            ExtractFile(_files[index], target);
         }
 
         public string ExtractString(int index)
         {
-            return ExtractString(Files[index]);
+            return ExtractString(_files[index]);
         }
 
         public byte[] ExtractBytes(int index)
         {
-            return ExtractBytes(Files[index]);
+            return ExtractBytes(_files[index]);
         }
         #endregion
     }
