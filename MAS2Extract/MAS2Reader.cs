@@ -61,6 +61,7 @@ namespace MAS2Extract
         public string File { get { return _File; } }
         #endregion
 
+        #region Deciphering methods
         /// <summary>
         /// Read the file header containing the file format + 
         /// all internal files
@@ -130,11 +131,10 @@ namespace MAS2Extract
 
                     var valueH = value & 0xFFFFFFFF00000000;
                     valueH = valueH >> 32;
-                    ulong value_l;
-                    value_l = ((ulong)byteIndex) | Saltkey & value;
+                    var valueL= ((ulong)byteIndex) | Saltkey & value;
                     valueH = gigabyteIndex | Saltkey2 & valueH;
 
-                    value = value_l | valueH << 32;
+                    value = valueL | valueH << 32;
 
                     output[byteIndex] = (byte)(bf[byteIndex] ^ DecodeFilesHeaderShiftBytes(value, c));
 
@@ -158,7 +158,8 @@ namespace MAS2Extract
                 return 64;
             return d >> s;
         }
-
+        #endregion
+        #region Constructor
         /// <summary>
         /// Constructor; parses MAS2 file for its contents.
         /// Use the ContainsFile & GetFile methods to search for files.
@@ -197,7 +198,7 @@ namespace MAS2Extract
                 filePosition += sizeCompressed;
             }
         }
-
+        #endregion
         #region Simple search methods.
         public bool ContainsFile(string file)
         {
